@@ -1,0 +1,18 @@
+[project]
+name = "inno-map-access"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "matplotlib>=3.10.8",
+    "numpy>=2.4.3",
+    "rasterio>=1.5.0",
+]
+
+[project.scripts]
+inno-map-access = "inno_map_access:main"
+
+[build-system]
+requires = ["uv_build>=0.10.8,<0.11.0"]
+build-backend = "uv_build"
