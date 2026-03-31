@@ -1,0 +1,563 @@
+from typing import Any
+from zipfile import ZipFile
+
+import numpy as np
+import rasterio
+import zarr
+from azure.identity import DefaultAzureCredential
+from obstore.store import AzureStore
+from rasterio.windows import Window
+from tqdm import tqdm
+from zarr.codecs import BloscCodec, BloscShuffle
+from zarr.storage import ObjectStore
+from zarr.types import ArrayV3
+
+# 0. Configuratie voor het schrijven naar Fabric OneLake
+GEO_IMAGE = "orthofotomozaiek_middenschalig_zomeropnamen_2021_vlaanderen"
+FABRIC_GEO_IMAGE = "orthofotomozaiek_middenschalig_zomeropnamen_2021_vlaanderen_2"
+GEO_IMAGES_LOCATION = Path("/home/azureuser/cloudfiles/code/data/geo_images")
+
+# GEO_IMAGE = "orthofotomozaiek_middenschalig_winteropnamen_kleur_2015_vlaanderen"
+# FABRIC_GEO_IMAGE = "winter"
+# GEO_IMAGES_LOCATION = Path("data/maps/")
+
+# 1. Shard size
+CHUNK_HEIGHT = 512
+CHUNK_WIDTH = 512
+SHARD_FACTOR = 16
+N_WORKERS = 3
+
+# 2. Fabric
+WORKSPACE_ID = "23b1515f-7adb-4ee2-bebe-8e41b9f5f2d2"
+LAKEHOUSE_ID = "cbb46753-ae96-4613-a29f-b09eeeeb1746"
+
+# 3. Activeer de Turbo (Rust) engine
+zarr.config.set({"codec_pipeline.path": "zarrs.ZarrsCodecPipeline"})
+
+# Credentials
+TOKEN_SCOPE: str = "https://storage.azure.com/.default"
+
+# Global workr state
+WORKER_GEO_LAYERS: list[tuple] = []  # (src, zip_bands, zarr_bands)
+WORKER_Z_ARRAY: ArrayV3 | None = None
+
+
+def get_azure_zarr_store() -> ObjectStore:
+    """Create a azur zarr store."""
+    TOKEN = DefaultAzureCredential().get_token(TOKEN_SCOPE).token
+    azure_store = AzureStore(
+        account_name="onelake",
+        container_name=WORKSPACE_ID,
+        prefix=f"{LAKEHOUSE_ID}/Files/{FABRIC_GEO_IMAGE}",
+        use_fabric_endpoint=True,
+        token=TOKEN,
+    )
+    return ObjectStore(azure_store)
+
+
+def get_metadata() -> dict[str, Any]:
+    return {
+        "attributes": {
+            "times": ["2021-summer"],
+            "bands": ["R", "G", "B", "NIR"],
+            "crs": "EPSG:31370",
+            "transform": [0.4, 0.0, 17000.0, 0.0, -0.4, 250000.0],
+            "pixel_size_m": 0.4,
+        },
+        "zarr_format": 3,
+        "node_type": "group",
+        "compression": ("zstd", 4),
+    }
+
+
+@dataclass()
+class GeoLayerConfig:
+    """
+    Configuration and state container for a geospatial data layer.
+
+    Attributes:
+        geo_layer_name (str): The name of the geospatial layer.
+        geo_layer_path (Path): The constructed path to the layer directory.
+        geo_image (str): The parent image or project folder name.
+        zip_bands (None | int | list[int]): The specific bands/channels to extract from the zip.
+        zarr_bands (Any): Configuration for zarr output channels.
+        layer (Any): The loaded rasterio dataset object.
+    """
+
+    geo_layer_name: str
+    geo_layer_path: Path = field(init=False)
+    geo_image: str
+    zip_bands: None | tuple[int]
+    zarr_bands: Any
+    vrt_file_path: Path = field(init=False)
+
+    def __post_init__(self):
+        """Constructs the layer path based on the data project name and layer name after initialization."""
+        self.geo_layer_path = GEO_IMAGES_LOCATION / self.geo_image / self.geo_layer_name
+
+
+@dataclass
+class BaseRasterHandler:
+    """
+    Base class for handling geospatial raster extraction and VRT creation.
+
+    Attributes:
+        extension (str): The file extension this handler is responsible for (e.g., '.tif').
+    """
+
+    extension: str = ""
+
+    @staticmethod
+    def extract_zip(
+        geo_layer_zip_path: Path, geo_layer_target_path: Path, extension: str
+    ) -> None:
+        """
+        Extracts files matching a specific extension from a zip archive.
+
+        Args:
+            geo_layer_zip_path (Path): The path to the zip archive.
+            geo_layer_target_path (Path): The destination directory for extracted files.
+            extension (str): The file extension to filter by (e.g., '.jp2').
+
+        Raises:
+            AssertionError: If no files matching the extension are found in the zip.
+        """
+        with ZipFile(geo_layer_zip_path, "r") as myzip:
+            # Get the files which have to be extracted
+            file_names = [f for f in myzip.namelist() if f.endswith(extension)]
+            assert len(file_names) > 0, (
+                f"No files were found with extension: {extension}"
+            )
+
+            # Make the parent folder
+            geo_layer_target_path.mkdir(parents=True, exist_ok=True)
+
+            # extract the files
+            for file_name in file_names:
+                target = geo_layer_target_path / Path(file_name).name
+                with myzip.open(file_name) as source, open(target, "wb") as t:
+                    shutil.copyfileobj(source, t)
+
+    def make_vrt_file(
+        self, geo_layer_extracted_zips_path: Path, vrt_file_name: str = "combined.vrt"
+    ):
+        """
+        Creates a GDAL Virtual Raster (VRT) from the extracted raster files.
+
+        Args:
+            geo_layer_extracted_zips_path (Path): The directory containing the extracted raster files.
+            vrt_file_name (str, optional): The name of the output VRT file. Defaults to "combined.vrt".
+
+        Returns:
+            str: The name of the generated VRT file.
+
+        Raises:
+            AssertionError: If the GDAL subprocess fails to build the VRT.
+        """
+        command = f"gdalbuildvrt {vrt_file_name} *{self.extension}"
+        result = subprocess.run(
+            command,
+            shell=True,
+            cwd=geo_layer_extracted_zips_path,  # Tells Python to run the command inside that folder
+            capture_output=True,  # Captures stdout and stderr
+            text=True,  # Returns output as string instead of bytes
+        )
+        assert result.returncode == 0, (
+            f"No Virtual Raster could be build in: {geo_layer_extracted_zips_path}"
+        )
+
+        return vrt_file_name
+
+
+@dataclass
+class Jp2Handler(BaseRasterHandler):
+    """Raster handler implementation for JPEG2000 (.jp2) files."""
+
+    extension: str = ".jp2"
+
+
+@dataclass
+class TifHandler(BaseRasterHandler):
+    """Raster handler implementation for TIF (.tif) files."""
+
+    extension: str = ".tif"
+
+
+@dataclass
+class TiffHandler(BaseRasterHandler):
+    """Raster handler implementation for TIFF (.tiff) files."""
+
+    extension: str = ".tiff"
+
+
+def get_raster_handler(geo_layer_path: Path):
+    """
+    Determines the appropriate raster handler by inspecting the contents of the first zip file.
+
+    Args:
+        geo_layer_path (Path): The directory containing the zip files for a specific layer.
+
+    Returns:
+        BaseRasterHandler: An instantiated handler corresponding to the found raster extension.
+
+    Raises:
+        ValueError: If no files with supported extensions are found within the zip.
+    """
+    # Possible extensions
+    valid_raster_handlers = {
+        ".jp2": Jp2Handler,
+        ".tif": TifHandler,
+        "tiff": TiffHandler,
+    }
+
+    # open the zip
+    raster_handler = None
+    with ZipFile(glob.glob(str(geo_layer_path / "*.zip"))[0], "r") as myzip:
+        # Loop over the filenames in the zip
+        for file_name in myzip.namelist():
+            # get the extentions
+            if Path(file_name).suffix in valid_raster_handlers:
+                raster_handler = valid_raster_handlers.get(Path(file_name).suffix)()  # type:ignore
+                break
+
+    # Check of self.extension exists
+    if not raster_handler:
+        raise ValueError(
+            f"There were no files found with extensions: ({', '.join(list(valid_raster_handlers))}) "
+            f"in: {geo_layer_path}"
+        )
+
+    return raster_handler
+
+
+def run_multiprocessing(
+    func: Callable[..., Any],
+    arguments: list[Any],
+    n_workers: int | None = None,
+    initializer: Callable | None = None,
+    initargs: tuple = (),
+) -> list[Any] | None:
+    """
+    Makes the function "vroeeem" by distributing the workload across multiple CPU cores.
+
+    Args:
+        func (Callable[..., Any]): The target function to execute.
+        arguments (list[Any]): A list of arguments to pass to the function. Tuples are unpacked.
+        n_workers (int | None, optional): Number of parallel workers to use. Defaults to all available CPU cores.
+        initializer (Callable | None): Functions which will be called once per worker
+                                       (e.g to read the VRTs and to open the Zarr-connectie).
+        initargs (tuple): Arguments for the initialization.
+
+    Returns:
+        list[Any] | None: A list containing the results of the function calls, or None if no results evaluated to True.
+    """
+    # 1. Determine the amount of workers
+    if n_workers is None:
+        n_workers = mp.cpu_count()
+
+    # 2. Fetch the function name
+    func_name = getattr(func, "__name__", "unkown function")
+    desc = f"Workers: {n_workers} | Functie: {func_name}"
+
+    # 3. Standardize the input
+    std_args = [arg if isinstance(arg, tuple) else (arg,) for arg in arguments]
+
+    # 4. Placeholder for the results
+    results = []
+
+    if n_workers > 1:
+        # Parallel
+        with ProcessPoolExecutor(
+            max_workers=n_workers, initializer=initializer, initargs=initargs
+        ) as executor:
+            # Submit alle taken
+            features = [executor.submit(func, *args) for args in std_args]
+
+            # Wacht tot ze klaar zijn en update de voortgangsbalk
+            for f in tqdm(as_completed(features), total=len(features), desc=desc):
+                results.append(f.result())
+    else:
+        # if initializer is not None
+        if initializer is not None:
+            initializer(*initargs)
+        # Serieel (handig voor debugging of als n_workers=1)
+        for args in tqdm(std_args, desc=desc):
+            results.append(func(*args))
+
+    return results if any(results) else None
+
+
+def calculate_canvas_shape(geo_layers: list[GeoLayerConfig]) -> tuple[int, int, int]:
+    """
+    Calculates the total number of bands across a list of geospatial layers.
+
+    Args:
+        geo_layers (list[GeoLayerConfig]): A list of initialized GeoLayerConfig objects
+            with active rasterio layer connections.
+
+    Returns:
+        typle[int]: A shape with the aggregated sum of channels/bands present in all provided layers.
+    """
+    # placeholder
+    n_bands = 0
+    shape = (0, 0)
+
+    # loop over the geo layers
+    for geo_layer in geo_layers:
+        with rasterio.open(geo_layer.vrt_file_path) as src:
+            # get the total canvas size
+            shape = src.shape
+            # get the n amount of bands
+            tmp_img = src.read(
+                geo_layer.zip_bands,
+                window=Window(col_off=0, row_off=0, width=1, height=1),
+            )  # type:ignore
+            # Add the amount of bands to n_bands
+            n_bands += tmp_img.shape[0]
+
+    return *shape, n_bands  # type:ignore
+
+
+def unzip_and_create_combined_vrt(
+    dir: Path, geo_layers: list[GeoLayerConfig]
+) -> list[GeoLayerConfig]:
+    """
+    Unzips raster datasets, creates combined VRT files, and updates layer configurations.
+
+    For each layer, this function identifies the correct raster handler, extracts the contents
+    of all associated zip files into a target directory, builds a GDAL Virtual Raster (VRT),
+    and opens the resulting VRT file, attaching the dataset to the layer's configuration.
+
+    Args:
+        dir (Path): The base target directory for extracted files and VRTs.
+        geo_layers (list[GeoLayerConfig]): A list of geospatial layer configurations to process.
+
+    Returns:
+        list[GeoLayerConfig]: The updated list of configurations with the `layer` attribute populated.
+    """
+    # Loop over the zip files layers
+    for geo_layer in geo_layers:
+        # get all zip files
+        geo_layer_extracted_zips_path = dir / geo_layer.geo_layer_name
+        raster_handler = get_raster_handler(geo_layer.geo_layer_path)
+
+        # unzip the data
+        arguments = [
+            (
+                geo_layer_zip_path,
+                geo_layer_extracted_zips_path,
+                raster_handler.extension,
+            )
+            for geo_layer_zip_path in glob.glob(str(geo_layer.geo_layer_path / "*.zip"))
+        ]
+        func = raster_handler.extract_zip
+        run_multiprocessing(func=func, arguments=arguments)
+
+        # make the vrt
+        vrt_file_name = raster_handler.make_vrt_file(geo_layer_extracted_zips_path)
+
+        # add the layer to the geo_layer object
+        geo_layer.vrt_file_path = geo_layer_extracted_zips_path / vrt_file_name
+
+    return geo_layers
+
+
+def worker_initializer(geo_layers: list[GeoLayerConfig], zarr_array_name: str):
+    """Opens a zarr azure connection + and keeps the vrt connection open"""
+    global WORKER_GEO_LAYERS, WORKER_Z_ARRAY
+
+    # Open the vrt with rasterio and the minimal attributes
+    WORKER_GEO_LAYERS = []
+    for geo_layer in geo_layers:
+        src = rasterio.open(geo_layer.vrt_file_path)
+        WORKER_GEO_LAYERS.append((src, geo_layer.zip_bands, geo_layer.zarr_bands))
+
+    # Open the zarr connection
+    zarr_store = get_azure_zarr_store()
+    root = zarr.open_group(store=zarr_store, zarr_format=3, mode="a")
+    WORKER_Z_ARRAY = root[zarr_array_name]  # type: ignore
+
+
+def fill_shard(
+    shard_shape: tuple[int],
+    height_offset: int,
+    width_offset: int,
+) -> None:
+    """
+    Reads a specific spatial window from the VRTs and writes the compiled data to a Zarr shard.
+
+    This function is intended to be run by a worker process. It opens the VRT for each layer,
+    reads the data for the specified window, stacks the bands into the correct format,
+    and writes the final chunk directly to the provided Zarr array.
+
+    Args:
+        shard_shape (tuple[int]): The shape of the shard to be created (height, width, bands).
+        height_offset (int): The starting row index (y-offset) in the global canvas.
+        width_offset (int): The starting column index (x-offset) in the global canvas.
+    """
+    # get the global values
+    global WORKER_Z_ARRAY, WORKER_GEO_LAYERS
+
+    # unpack height and width
+    height, width = shard_shape[:2]  # type:ignore
+
+    # create a empty shard
+    shard = np.zeros(shard_shape, dtype="uint8")
+
+    # fill the shard with the layers
+    for src, zip_bands, zarr_bands in WORKER_GEO_LAYERS:
+        # read the shard of the layer
+        geo_layer_shard = src.read(
+            (zip_bands,) if isinstance(zip_bands, int) else zip_bands,
+            window=Window(width_offset, height_offset, width, height),  # type:ignore
+            out_dtype=np.uint8,
+        )
+
+        # check if empty, if so, do nothing
+        if not np.any(geo_layer_shard):
+            print("skip")
+            continue
+
+        # transpose from (C, H, W) to (H, W, C)
+        geo_layer_shard = (
+            geo_layer_shard.transpose(1, 2, 0)
+            if geo_layer_shard.shape[0] >= 2
+            else geo_layer_shard[0]
+        )
+
+        # fill the shard
+        shard[zarr_bands] = geo_layer_shard
+
+    # Replace all [255, 255, ..., 255] with [0, 0, ..., 0]
+    # TODO: shape file als mask, en alles erbuiten zwart maken
+    mask = (shard == [255] * shard_shape[-1]).all(axis=-1)
+    shard[mask] = [0] * shard_shape[-1]
+
+    # Write to zarr in the correct slice
+    WORKER_Z_ARRAY[
+        height_offset : height_offset + height, width_offset : width_offset + width, :
+    ] = shard  # type:ignore
+
+
+def fill_z_array(z_array: ArrayV3, geo_layers: list[GeoLayerConfig]) -> None:
+    """
+    Calculates the spatial grid of shards and coordinates multiprocessing to fill the Zarr array.
+
+    This function loops over the total canvas dimensions to determine the correct height and width
+    offsets for every individual shard. It creates a list of tasks (arguments) and submits them
+    to the multiprocessing pool, where `fill_shard` handles the actual reading and writing.
+
+    Args:
+        z_array (ArrayV3): The initialized Zarr array object representing the final dataset.
+        geo_layers (list[GeoLayerConfig]): The configured geospatial layers containing the data sources.
+    """
+    # Get the canvas
+    canvas_height, canvas_width = z_array.shape[:2]
+    shard_height, shard_width = z_array.shards[:2]  # type:ignore
+    shard_default_shape = z_array.shape
+
+    # Fill z-array with shards
+    shards = []
+    for height_offset in range(0, canvas_height, shard_height):
+        # Calculate the actual shard height
+        actual_height = min(shard_height, canvas_height - height_offset)  # type:ignore
+        for width_offset in range(0, canvas_width, shard_width):
+            # calculate the actual shard width
+            actual_width = min(shard_width, canvas_width - width_offset)  # type:ignore
+
+            # Create an empty shard
+            shard_shape = np.copy(shard_default_shape)
+            shard_shape[0] = actual_height
+            shard_shape[1] = actual_width
+
+            # store knowledge
+            shards.append((shard_shape, height_offset, width_offset))
+
+    # shuffle the shards
+    shuffle(shards)
+
+    # run it in parallela
+    run_multiprocessing(
+        func=fill_shard,
+        arguments=shards,
+        n_workers=N_WORKERS,
+        initializer=worker_initializer,
+        initargs=(geo_layers, z_array.name),
+    )
+
+
+def convert_map_to_zarr(geo_layers: list[GeoLayerConfig]) -> None:
+    """
+    Main orchestrator function: converts zipped geospatial layers into a unified Zarr v3 array.
+
+    The pipeline performs the following steps:
+    1. Creates a temporary directory for extraction.
+    2. Unzips raw data and generates a combined VRT for all provided layers.
+    3. Calculates the total canvas dimensions and band depth based on the VRTs.
+    4. Initializes the Zarr v3 array in the configured Azure store with Zstandard compression.
+    5. Triggers the parallel processing function to populate the Zarr array with chunks.
+
+    Args:
+        geo_layers (list[GeoLayerConfig]): A list defining which layers to process,
+            their paths, and how bands should map to the output Zarr array.
+    """
+    # Create a virtual folder where we unzip the files
+    with tempfile.TemporaryDirectory(
+        prefix="_unzip_", dir=".", delete=False
+    ) as temp_dir:
+        # Unzip the zip files and create a vrt file
+        geo_layers = unzip_and_create_combined_vrt(Path(temp_dir), geo_layers)
+
+        # Calculate the amount of channels (Bands) + canvas size
+        canvas_shape = calculate_canvas_shape(geo_layers)
+
+        # Create a zarr object
+        root = zarr.open_group(store=get_azure_zarr_store(), zarr_format=3)
+        root.attrs.update(get_metadata())
+        z_array = root.create_array(
+            name="zomer-2021",
+            shape=canvas_shape,
+            shards=(
+                CHUNK_HEIGHT * SHARD_FACTOR,
+                CHUNK_WIDTH * SHARD_FACTOR,
+                canvas_shape[-1],
+            ),
+            chunks=(CHUNK_HEIGHT, CHUNK_WIDTH, canvas_shape[-1]),
+            dtype="uint8",
+            compressors=[
+                BloscCodec(cname="lz4", clevel=3, shuffle=BloscShuffle.shuffle)
+            ],  # type:ignore
+            fill_value=0,
+            dimension_names=("y", "x", "band"),
+            attributes={
+                "crs": "EPSG:31370",
+                "description": "Luchtfoto zomer 2021",
+                "bands": ["R", "G", "B", "NIR"],
+            },
+            config={"write_empty_chunks": False},
+            overwrite=True,
+        )
+
+        # Fill the z-array
+        fill_z_array(z_array, geo_layers)
+
+
+if __name__ == "__main__":
+    # spawn mp
+    mp.set_start_method("spawn")
+
+    # Define Layers
+    rgb = GeoLayerConfig(
+        geo_layer_name="OMZRGB21VL",
+        geo_image=GEO_IMAGE,
+        zip_bands=None,
+        zarr_bands=np.s_[:, :, :3],
+    )
+    cir = GeoLayerConfig(
+        geo_layer_name="OMZCIR21VL",
+        geo_image=GEO_IMAGE,
+        zip_bands=(1,),
+        zarr_bands=np.s_[:, :, 3],
+    )
+
+    convert_map_to_zarr(geo_layers=[rgb, cir])

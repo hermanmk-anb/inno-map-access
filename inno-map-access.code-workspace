@@ -19,19 +19,6 @@
       "**/.venv": true,
       "**/.mypy_cache": true
     },
-    // Indexing van Python modules (voor betere auto-completion en linting)
-    "python.analysis.indexing": true,
-    "python.analysis.userFileIndexingLimit": -1,
-    "python.analysis.packageIndexDepths": [
-      {
-        "name": "",
-        "depth": 100,
-        "includeAllSymbols": true
-      }
-    ],
-    "python.analysis.autoImportCompletions": true,
-    "python.analysis.completeFunctionParens": true,
-    "python.analysis.autoSearchPaths": true,
     "editor.suggest.snippetsPreventQuickSuggestions": false,
   }
 }
