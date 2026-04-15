@@ -3,14 +3,9 @@ from zipfile import ZipFile
 
 import numpy as np
 import rasterio
-import zarr
 from azure.identity import DefaultAzureCredential
 from obstore.store import AzureStore
-from rasterio.windows import Window
 from tqdm import tqdm
-from zarr.codecs import BloscCodec, BloscShuffle
-from zarr.storage import ObjectStore
-from zarr.types import ArrayV3
 
 # 0. Configuratie voor het schrijven naar Fabric OneLake
 GEO_IMAGE = "orthofotomozaiek_middenschalig_zomeropnamen_2021_vlaanderen"
@@ -32,7 +27,7 @@ WORKSPACE_ID = "23b1515f-7adb-4ee2-bebe-8e41b9f5f2d2"
 LAKEHOUSE_ID = "cbb46753-ae96-4613-a29f-b09eeeeb1746"
 
 # 3. Activeer de Turbo (Rust) engine
-zarr.config.set({"codec_pipeline.path": "zarrs.ZarrsCodecPipeline"})
+# zarr.config.set({"codec_pipeline.path": "zarrs.ZarrsCodecPipeline"})
 
 # Credentials
 TOKEN_SCOPE: str = "https://storage.azure.com/.default"
@@ -42,17 +37,17 @@ WORKER_GEO_LAYERS: list[tuple] = []  # (src, zip_bands, zarr_bands)
 WORKER_Z_ARRAY: ArrayV3 | None = None
 
 
-def get_azure_zarr_store() -> ObjectStore:
+def get_azure_store():
     """Create a azur zarr store."""
     TOKEN = DefaultAzureCredential().get_token(TOKEN_SCOPE).token
     azure_store = AzureStore(
         account_name="onelake",
         container_name=WORKSPACE_ID,
-        prefix=f"{LAKEHOUSE_ID}/Files/{FABRIC_GEO_IMAGE}",
+        prefix=f"{LAKEHOUSE_ID}/Files/geo_vectors/",
         use_fabric_endpoint=True,
         token=TOKEN,
     )
-    return ObjectStore(azure_store)
+    return azure_store
 
 
 def get_metadata() -> dict[str, Any]:

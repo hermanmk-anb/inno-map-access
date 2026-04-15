@@ -25,9 +25,7 @@ class ReSampler:
         self.T_sparse = csr_array(self.T)
 
     def resample_sparse(self, x: np.ndarray) -> np.ndarray:
-        return np.vstack(
-            [(self.T_sparse @ x[i])[None, ...] for i in np.arange(x.shape[0])]
-        )
+        return np.vstack([(self.T_sparse @ x[i])[None, ...] for i in np.arange(x.shape[0])])
 
     def resample(self, x: np.ndarray) -> np.ndarray:
         return self.T @ x
@@ -43,9 +41,7 @@ class ReGridder:
         self.vertical_resampler = ReSampler(input_shape[0], target_shape[0])
         self.horizontal_resampler = ReSampler(input_shape[1], target_shape[1])
 
-    def regrid(
-        self, image_array: np.ndarray, astype: np.dtype | None = None
-    ) -> np.ndarray:
+    def regrid(self, image_array: np.ndarray, astype: np.dtype | None = None) -> np.ndarray:
         v_im = self.vertical_resampler.resample_sparse(image_array)
         h_im = self.horizontal_resampler.resample_sparse(v_im.transpose(0, 2, 1))
         result = h_im.transpose(0, 2, 1)
@@ -68,11 +64,8 @@ crown_cover_grid = rasterio.open(
     "/home/azureuser/cloudfiles/code/data/geo_images/kruinbedekking/BGK2015_1/GeoTIFF/combined.vrt"
 )
 
-
 # Coordinates for image patch, in longitudes and latitudes
-v_coords, h_coords = transform(
-    "EPSG:4326", photo_2015.crs, [LEFT, RIGHT], [TOP, BOTTOM]
-)
+v_coords, h_coords = transform("EPSG:4326", photo_2015.crs, [LEFT, RIGHT], [TOP, BOTTOM])
 
 bbox = v_coords[0], h_coords[1], v_coords[1], h_coords[0]
 photo_window = from_bounds(*bbox, transform=photo_2015.transform)
@@ -80,9 +73,7 @@ window_transform = photo_2015.window_transform(photo_window)
 coords_to_pixels = ~window_transform
 # sample the patches from the complete image
 photo = photo_2015.read(window=photo_window)
-cover = crown_cover_grid.read(
-    window=from_bounds(*bbox, transform=crown_cover_grid.transform)
-)
+cover = crown_cover_grid.read(window=from_bounds(*bbox, transform=crown_cover_grid.transform))
 
 cover_resampled = ReGridder(cover.shape[1:], photo.shape[1:]).regrid(cover)
 
@@ -111,12 +102,8 @@ crowns = gpd.read_file(
     bbox=bbox,
 )
 
-bushes["geometry"] = bushes["geometry"].apply(
-    lambda x: geopandas_transform(~window_transform, x)
-)
-crowns["geometry"] = crowns["geometry"].apply(
-    lambda x: geopandas_transform(~window_transform, x)
-)
+bushes["geometry"] = bushes["geometry"].apply(lambda x: geopandas_transform(~window_transform, x))
+crowns["geometry"] = crowns["geometry"].apply(lambda x: geopandas_transform(~window_transform, x))
 
 
 # Show some plots
@@ -124,7 +111,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 
 # set resolution to a useable level
-matplotlib.rcParams["figure.dpi"] = 400
+matplotlib.rcParams["figure.dpi"] = 600
 
 _, ax = plt.subplots()
 
