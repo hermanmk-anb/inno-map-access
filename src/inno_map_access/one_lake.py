@@ -15,6 +15,7 @@ LAKEHOUSE_ID = "eae09446-a6cd-40af-bd43-1d11616a3cac"
 def get_onelake_zarr_store(
     workspace_id: str,
     lakehouse_id: str,
+    path: str,
     read_only: bool = True,
 ) -> ObjectStore:
     """
@@ -47,7 +48,7 @@ def get_onelake_zarr_store(
     azure_store = AzureStore(
         account_name="onelake",  # OneLake storage account
         container_name=workspace_id,  # Workspace acts as container
-        prefix=f"{lakehouse_id}/Files/experiment2",  # Path to the data
+        prefix=f"{lakehouse_id}/Files/{path}",  # Path to the data
         use_fabric_endpoint=True,  # Use Microsoft Fabric endpoint
         credential_provider=credential_provider,  # Authentication handler
     )
@@ -58,5 +59,6 @@ def get_onelake_zarr_store(
 ONELAKE_STORE = get_onelake_zarr_store(
     workspace_id=WORKSPACE_ID,
     lakehouse_id=LAKEHOUSE_ID,
+    path="experiment3",
     read_only=False,
 )

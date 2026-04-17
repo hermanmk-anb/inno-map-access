@@ -173,6 +173,37 @@ wheels = [
 ]
 
 [[package]]
+name = "cftime"
+version = "1.6.5"
+source = { registry = "https://nexusrepo.natuurenbos.be/repository/anb-python-group/simple/" }
+dependencies = [
+    { name = "numpy" },
+]
+sdist = { url = "https://nexusrepo.natuurenbos.be/repository/anb-python-group/packages/cftime/1.6.5/cftime-1.6.5.tar.gz", hash = "sha256:8225fed6b9b43fb87683ebab52130450fc1730011150d3092096a90e54d1e81e" }
+wheels = [
+    { url = "https://nexusrepo.natuurenbos.be/repository/anb-python-group/packages/cftime/1.6.5/cftime-1.6.5-cp313-cp313-macosx_10_13_x86_64.whl", hash = "sha256:4aba66fd6497711a47c656f3a732c2d1755ad15f80e323c44a8716ebde39ddd5" },
+    { url = "https://nexusrepo.natuurenbos.be/repository/anb-python-group/packages/cftime/1.6.5/cftime-1.6.5-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:89e7cba699242366e67d6fb5aee579440e791063f92a93853610c91647167c0d" },
+    { url = "https://nexusrepo.natuurenbos.be/repository/anb-python-group/packages/cftime/1.6.5/cftime-1.6.5-cp313-cp313-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:2f1eb43d7a7b919ec99aee709fb62ef87ef1cf0679829ef93d37cc1c725781e9" },
+    { url = "https://nexusrepo.natuurenbos.be/repository/anb-python-group/packages/cftime/1.6.5/cftime-1.6.5-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:e02a1d80ffc33fe469c7db68aa24c4a87f01da0c0c621373e5edadc92964900b" },
+    { url = "https://nexusrepo.natuurenbos.be/repository/anb-python-group/packages/cftime/1.6.5/cftime-1.6.5-cp313-cp313-musllinux_1_2_x86_64.whl", hash = "sha256:18ab754805233cdd889614b2b3b86a642f6d51a57a1ec327c48053f3414f87d8" },
+    { url = "https://nexusrepo.natuurenbos.be/repository/anb-python-group/packages/cftime/1.6.5/cftime-1.6.5-cp313-cp313-win_amd64.whl", hash = "sha256:6c27add8f907f4a4cd400e89438f2ea33e2eb5072541a157a4d013b7dbe93f9c" },
+    { url = "https://nexusrepo.natuurenbos.be/repository/anb-python-group/packages/cftime/1.6.5/cftime-1.6.5-cp313-cp313-win_arm64.whl", hash = "sha256:31d1ff8f6bbd4ca209099d24459ec16dea4fb4c9ab740fbb66dd057ccbd9b1b9" },
+    { url = "https://nexusrepo.natuurenbos.be/repository/anb-python-group/packages/cftime/1.6.5/cftime-1.6.5-cp314-cp314-macosx_10_15_x86_64.whl", hash = "sha256:c69ce3bdae6a322cbb44e9ebc20770d47748002fb9d68846a1e934f1bd5daf0b" },
+    { url = "https://nexusrepo.natuurenbos.be/repository/anb-python-group/packages/cftime/1.6.5/cftime-1.6.5-cp314-cp314-macosx_11_0_arm64.whl", hash = "sha256:e62e9f2943e014c5ef583245bf2e878398af131c97e64f8cd47c1d7baef5c4e2" },
+    { url = "https://nexusrepo.natuurenbos.be/repository/anb-python-group/packages/cftime/1.6.5/cftime-1.6.5-cp314-cp314-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:7da5fdaa4360d8cb89b71b8ded9314f2246aa34581e8105c94ad58d6102d9e4f" },
+    { url = "https://nexusrepo.natuurenbos.be/repository/anb-python-group/packages/cftime/1.6.5/cftime-1.6.5-cp314-cp314-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:bff865b4ea4304f2744a1ad2b8149b8328b321dd7a2b9746ef926d229bd7cd49" },
+    { url = "https://nexusrepo.natuurenbos.be/repository/anb-python-group/packages/cftime/1.6.5/cftime-1.6.5-cp314-cp314-musllinux_1_2_x86_64.whl", hash = "sha256:e552c5d1c8a58f25af7521e49237db7ca52ed2953e974fe9f7c4491e95fdd36c" },
+    { url = "https://nexusrepo.natuurenbos.be/repository/anb-python-group/packages/cftime/1.6.5/cftime-1.6.5-cp314-cp314-win_amd64.whl", hash = "sha256:e645b095dc50a38ac454b7e7f0742f639e7d7f6b108ad329358544a6ff8c9ba2" },
+    { url = "https://nexusrepo.natuurenbos.be/repository/anb-python-group/packages/cftime/1.6.5/cftime-1.6.5-cp314-cp314-win_arm64.whl", hash = "sha256:b9044d7ac82d3d8af189df1032fdc871bbd3f3dd41a6ec79edceb5029b71e6e0" },
+    { url = "https://nexusrepo.natuurenbos.be/repository/anb-python-group/packages/cftime/1.6.5/cftime-1.6.5-cp314-cp314t-macosx_10_15_x86_64.whl", hash = "sha256:9ef56460cb0576e1a9161e1428c9e1a633f809a23fa9d598f313748c1ae5064e" },
+    { url = "https://nexusrepo.natuurenbos.be/repository/anb-python-group/packages/cftime/1.6.5/cftime-1.6.5-cp314-cp314t-macosx_11_0_arm64.whl", hash = "sha256:4f4873d38b10032f9f3111c547a1d485519ae64eee6a7a2d091f1f8b08e1ba50" },
+    { url = "https://nexusrepo.natuurenbos.be/repository/anb-python-group/packages/cftime/1.6.5/cftime-1.6.5-cp314-cp314t-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:ccce0f4c9d3f38dd948a117e578b50d0e0db11e2ca9435fb358fd524813e4b61" },
+    { url = "https://nexusrepo.natuurenbos.be/repository/anb-python-group/packages/cftime/1.6.5/cftime-1.6.5-cp314-cp314t-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:19cbfc5152fb0b34ce03acf9668229af388d7baa63a78f936239cb011ccbe6b1" },
+    { url = "https://nexusrepo.natuurenbos.be/repository/anb-python-group/packages/cftime/1.6.5/cftime-1.6.5-cp314-cp314t-win_amd64.whl", hash = "sha256:4470cd5ef3c2514566f53efbcbb64dd924fa0584637d90285b2f983bd4ee7d97" },
+    { url = "https://nexusrepo.natuurenbos.be/repository/anb-python-group/packages/cftime/1.6.5/cftime-1.6.5-cp314-cp314t-win_arm64.whl", hash = "sha256:034c15a67144a0a5590ef150c99f844897618b148b87131ed34fda7072614662" },
+]
+
+[[package]]
 name = "charset-normalizer"
 version = "3.4.6"
 source = { registry = "https://nexusrepo.natuurenbos.be/repository/anb-python-group/simple/" }
@@ -807,6 +838,7 @@ name = "inno-map-access"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "cftime" },
     { name = "geopandas" },
     { name = "geoparquet-io" },
     { name = "geozarr-toolkit" },
@@ -825,6 +857,7 @@ dependencies = [
     { name = "scipy" },
     { name = "tqdm" },
     { name = "unidecode" },
+    { name = "xarray" },
     { name = "xbatcher" },
     { name = "zarr", extra = ["gpu", "remote"] },
     { name = "zarrs" },
@@ -832,6 +865,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "cftime", specifier = ">=1.6.5" },
     { name = "geopandas", specifier = ">=1.1.3" },
     { name = "geoparquet-io", specifier = ">=0.4.0" },
     { name = "geozarr-toolkit", specifier = ">=0.1.2" },
@@ -850,6 +884,7 @@ requires-dist = [
     { name = "scipy", specifier = ">=1.17.1" },
     { name = "tqdm", specifier = ">=4.67.3" },
     { name = "unidecode", specifier = ">=1.4.0" },
+    { name = "xarray", specifier = "==2026.4.0" },
     { name = "xbatcher", specifier = ">=0.4.0" },
     { name = "zarr", extras = ["gpu", "remote"], specifier = ">=3.1.6" },
     { name = "zarrs", specifier = ">=0.2.3" },
@@ -2639,16 +2674,16 @@ wheels = [
 
 [[package]]
 name = "xarray"
-version = "2026.2.0"
+version = "2026.4.0"
 source = { registry = "https://nexusrepo.natuurenbos.be/repository/anb-python-group/simple/" }
 dependencies = [
     { name = "numpy" },
     { name = "packaging" },
     { name = "pandas" },
 ]
-sdist = { url = "https://nexusrepo.natuurenbos.be/repository/anb-python-group/packages/xarray/2026.2.0/xarray-2026.2.0.tar.gz", hash = "sha256:978b6acb018770554f8fd964af4eb02f9bcc165d4085dbb7326190d92aa74bcf" }
+sdist = { url = "https://nexusrepo.natuurenbos.be/repository/anb-python-group/packages/xarray/2026.4.0/xarray-2026.4.0.tar.gz", hash = "sha256:c4ac9a01a945d90d5b1628e2af045099a9d4943536d4f2ee3ae963c3b222d15b" }
 wheels = [
-    { url = "https://nexusrepo.natuurenbos.be/repository/anb-python-group/packages/xarray/2026.2.0/xarray-2026.2.0-py3-none-any.whl", hash = "sha256:e927d7d716ea71dea78a13417970850a640447d8dd2ceeb65c5687f6373837c9" },
+    { url = "https://nexusrepo.natuurenbos.be/repository/anb-python-group/packages/xarray/2026.4.0/xarray-2026.4.0-py3-none-any.whl", hash = "sha256:d43751d9fb4a90f9249c30431684f00c41bc874f1edccd862631a40cbc0edf08" },
 ]
 
 [[package]]
